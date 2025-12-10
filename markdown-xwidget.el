@@ -111,8 +111,13 @@ project."
   (markdown-xwidget-resource (concat "github_css/" theme-name ".css")))
 
 (defun markdown-xwidget-highlightjs-css-path (theme-name)
-  "Return the absolute path to the highlight.js THEME-NAME file."
-  (markdown-xwidget-resource (concat "highlight_css/" theme-name ".css")))
+  "Return the absolute path to the highlight.js THEME-NAME file.
+Themes can be in highlight_css/ or highlight_css/base16/."
+  (let ((root-path (markdown-xwidget-resource (concat "highlight_css/" theme-name ".css")))
+        (base16-path (markdown-xwidget-resource (concat "highlight_css/base16/" theme-name ".css"))))
+    (cond ((file-exists-p root-path) root-path)
+          ((file-exists-p base16-path) base16-path)
+          (t root-path))))
 
 ;;;; markdown-xwidgethtml-header-content
 

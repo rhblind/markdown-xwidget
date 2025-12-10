@@ -6,7 +6,16 @@ Features:
 - Render markdown using GitHub styles
 - Mermaid diagrams
 - Syntax highlighting
-- Mathjax
+- MathJax
+
+### Bundled Libraries
+
+This package bundles the following libraries (no external requests needed):
+
+- [highlight.js](https://highlightjs.org/) v11.11.1 - Syntax highlighting
+- [mermaid.js](https://mermaid.js.org/) v11 - Diagram rendering
+- [MathJax](https://www.mathjax.org/) v4 - Math equation rendering
+- [github-markdown-css](https://github.com/sindresorhus/github-markdown-css) - GitHub styling
 
 | Light                     | Dark                    |
 |---------------------------|-------------------------|
@@ -165,7 +174,8 @@ Default value: `"default"`'
 ### markdown-xwidget-code-block-theme
 
 Theme to apply to fenced code blocks. A valid value is any filename in
-[highlight.js/src/styles][hjs] (without the `.css` extension).
+[highlight.js/src/styles][hjs] (without the `.css` extension). Base16 themes
+are also supported (e.g., `"3024"`, `"monokai"`).
 
 Default value: `"default"`
 
@@ -174,13 +184,16 @@ Default value: `"default"`
 
 ## Development
 
-### Update highlight.js, mermaid, and mathjax
+### Update highlight.js, mermaid, and MathJax
 
-To update the included versions of highlight.js, mermaid, and mathjax, run:
+To update the included versions of highlight.js, mermaid, and MathJax, edit
+the version variables at the top of the script and run:
 
 ```sh
 ./scripts/fetch_resources.sh
 ```
+
+The script requires `python3` and `curl`.
 
 ### Update GitHub CSS
 

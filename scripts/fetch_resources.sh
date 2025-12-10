@@ -1,51 +1,51 @@
 #!/bin/bash
 
+# Library versions
+HIGHLIGHTJS_VERSION="11.11.1"
+MERMAID_VERSION="11"
+MATHJAX_VERSION="4"
+
 tempdir=$(mktemp -d)
 
-echo "Fetching resource bundle from highlightjs.org..."
+echo "Fetching highlight.js CSS themes from cdnjs API..."
 
-# Only specify one language because we're just getting this bundle for the CSS.
-# All of the CSS files come with this resource bundle. We'll get the javascript
-# from a CDN. Downloading too many languages here casuse an error.
-curl -s -X POST \
-     -H 'Content-Type: application/json' \
-     -d '{
-  "api": 2,
-  "languages": [
-    "bash"
-  ]
-}' \
-     https://highlightjs.org/api/download \
-     > "$tempdir/out.zip"
+# Get list of CSS files from cdnjs API and download them
+curl -sL "https://api.cdnjs.com/libraries/highlight.js/${HIGHLIGHTJS_VERSION}?fields=files" | \
+python3 -c "
+import json, sys, subprocess, os
 
-echo "Extracting resource bundle to: $tempdir"
+data = json.load(sys.stdin)
+css_files = [f for f in data['files'] if f.startswith('styles/') and f.endswith('.min.css')]
 
-unzip -q \
-      -d "$tempdir" \
-      "$tempdir/out.zip"
+base_url = 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/${HIGHLIGHTJS_VERSION}/'
 
-d=resources/highlight_css
-css_files=$(find "$tempdir/styles/" ! -name "*.min.css")
-for f in $css_files; do
-    # Parameter expansion to remove prefix pattern
-    file_name="${f##*/}"
-    cp "$f" "$d/$file_name"
-done
+for f in css_files:
+    # Remove 'styles/' prefix and '.min.css' suffix, then add .css
+    rel_path = f.replace('styles/', '').replace('.min.css', '.css')
+    local_path = 'resources/highlight_css/' + rel_path
+    os.makedirs(os.path.dirname(local_path) if os.path.dirname(local_path) else 'resources/highlight_css', exist_ok=True)
+    url = base_url + f
+    subprocess.run(['curl', '-sL', url, '-o', local_path], check=True)
+
+print(f'Downloaded {len(css_files)} CSS files')
+"
 
 echo "Downloading highlight.min.js from CDN"
 
-curl -s \
-    https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js \
+curl -sL \
+    "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/${HIGHLIGHTJS_VERSION}/highlight.min.js" \
     > resources/highlight.min.js
 
 echo "Fetching mermaid js"
 
-curl -s \
-     https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js \
+curl -sL \
+     "https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_VERSION}/dist/mermaid.min.js" \
      > resources/mermaid.min.js
 
 echo "Fetching MathJax js"
 
-curl -s \
-     https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js \
+curl -sL \
+     "https://cdn.jsdelivr.net/npm/mathjax@${MATHJAX_VERSION}/tex-mml-chtml.js" \
      > resources/tex-mml-chtml.js
+
+echo "Done!"
