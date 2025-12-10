@@ -91,14 +91,37 @@ If nil, the value of `markdown-command' will be used."
 (defvar markdown-xwidget-preview-mode nil
   "Sentinel variable for command `markdown-xwidget-preview-mode'.")
 
+(defvar-local markdown-xwidget--xwidget-buffer nil
+  "The xwidget buffer associated with this markdown buffer.")
+
+(defvar-local markdown-xwidget--source-buffer nil
+  "The markdown source buffer associated with this xwidget buffer.")
+
 ;;;; Functions
+
+(defun markdown-xwidget--kill-buffer-hook ()
+  "Hook to run when xwidget buffer is killed.
+Disables `markdown-xwidget-preview-mode' in the source markdown buffer."
+  (when (and markdown-xwidget--source-buffer
+             (buffer-live-p markdown-xwidget--source-buffer))
+    (with-current-buffer markdown-xwidget--source-buffer
+      (when markdown-xwidget-preview-mode
+        (markdown-xwidget-preview-mode -1)))))
 
 (defun markdown-xwidget-preview (file)
   "Preview FILE with xwidget-webkit.
 To be used with `markdown-live-preview-window-function'."
-  (let ((uri (format "file://%s" file)))
+  (let ((uri (format "file://%s" file))
+        (source-buffer (current-buffer)))
     (xwidget-webkit-browse-url uri)
-    xwidget-webkit-last-session-buffer))
+    (let ((xwidget-buffer xwidget-webkit-last-session-buffer))
+      ;; Store reference to xwidget buffer in source buffer
+      (setq markdown-xwidget--xwidget-buffer xwidget-buffer)
+      ;; Set up the xwidget buffer with reference back to source and kill hook
+      (with-current-buffer xwidget-buffer
+        (setq markdown-xwidget--source-buffer source-buffer)
+        (add-hook 'kill-buffer-hook #'markdown-xwidget--kill-buffer-hook nil t))
+      xwidget-buffer)))
 
 (defun markdown-xwidget-resource (rel-path)
   "Return the absolute path for REL-PATH.
@@ -192,7 +215,8 @@ restored again when this mode is disabled."
 (defun markdown-xwidget-preview-mode--disable ()
   "Disable `markdown-xwidget-preview-mode'.
 This restores the original values for all the `markdown-mode'
-variables that were set when this mode was enabled."
+variables that were set when this mode was enabled, and kills the
+xwidget buffer if it still exists."
   (setq markdown-css-paths
         markdown-xwidget--markdown-css-paths-original)
   (setq markdown-command
@@ -201,6 +225,14 @@ variables that were set when this mode was enabled."
         markdown-xwidget--markdown-live-preview-window-function-original)
   (setq markdown-xhtml-header-content
         markdown-xwidget--markdown-xhtml-header-content-original)
+  ;; Kill the xwidget buffer if it exists
+  (when (and markdown-xwidget--xwidget-buffer
+             (buffer-live-p markdown-xwidget--xwidget-buffer))
+    ;; Remove the hook first to avoid recursion
+    (with-current-buffer markdown-xwidget--xwidget-buffer
+      (remove-hook 'kill-buffer-hook #'markdown-xwidget--kill-buffer-hook t))
+    (kill-buffer markdown-xwidget--xwidget-buffer))
+  (setq markdown-xwidget--xwidget-buffer nil)
   (markdown-live-preview-mode -1))
 
 ;;;###autoload
