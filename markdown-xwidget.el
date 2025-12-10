@@ -99,29 +99,71 @@ If nil, the value of `markdown-command' will be used."
 
 ;;;; Functions
 
-(defun markdown-xwidget--kill-buffer-hook ()
-  "Hook to run when xwidget buffer is killed.
-Disables `markdown-xwidget-preview-mode' in the source markdown buffer."
+(defun markdown-xwidget--cleanup-source-buffer ()
+  "Clean up the source buffer's reference to the xwidget buffer.
+Disables preview mode if it was enabled."
   (when (and markdown-xwidget--source-buffer
              (buffer-live-p markdown-xwidget--source-buffer))
     (with-current-buffer markdown-xwidget--source-buffer
+      (setq markdown-xwidget--xwidget-buffer nil)
       (when markdown-xwidget-preview-mode
         (markdown-xwidget-preview-mode -1)))))
+
+(defun markdown-xwidget--kill-xwidget-buffer (buf)
+  "Kill xwidget buffer BUF without confirmation prompts."
+  (when (buffer-live-p buf)
+    (with-current-buffer buf
+      (remove-hook 'kill-buffer-hook #'markdown-xwidget--kill-buffer-hook t))
+    (kill-buffer buf)))
+
+(defun markdown-xwidget--kill-buffer-hook ()
+  "Hook to run when xwidget buffer is killed externally.
+Disables preview mode in the source buffer and closes the preview window."
+  (let ((win (get-buffer-window (current-buffer))))
+    (setq xwidget-webkit-last-session-buffer nil)
+    (markdown-xwidget--cleanup-source-buffer)
+    (when (and win (window-live-p win))
+      (delete-window win))))
+
+(defun markdown-xwidget-close-preview ()
+  "Close the xwidget preview buffer and window without confirmation."
+  (interactive)
+  (let ((buf (current-buffer))
+        (win (get-buffer-window (current-buffer))))
+    (setq xwidget-webkit-last-session-buffer nil)
+    (markdown-xwidget--cleanup-source-buffer)
+    (markdown-xwidget--kill-xwidget-buffer buf)
+    (when (and win (window-live-p win))
+      (delete-window win))))
 
 (defun markdown-xwidget-preview (file)
   "Preview FILE with xwidget-webkit.
 To be used with `markdown-live-preview-window-function'."
   (let ((uri (format "file://%s" file))
         (source-buffer (current-buffer)))
-    (xwidget-webkit-browse-url uri)
-    (let ((xwidget-buffer xwidget-webkit-last-session-buffer))
-      ;; Store reference to xwidget buffer in source buffer
-      (setq markdown-xwidget--xwidget-buffer xwidget-buffer)
-      ;; Set up the xwidget buffer with reference back to source and kill hook
-      (with-current-buffer xwidget-buffer
-        (setq markdown-xwidget--source-buffer source-buffer)
-        (add-hook 'kill-buffer-hook #'markdown-xwidget--kill-buffer-hook nil t))
-      xwidget-buffer)))
+    ;; If we already have our own xwidget buffer, reuse it
+    (if (and markdown-xwidget--xwidget-buffer
+             (buffer-live-p markdown-xwidget--xwidget-buffer))
+        (with-current-buffer markdown-xwidget--xwidget-buffer
+          (xwidget-webkit-goto-uri (xwidget-webkit-current-session) uri)
+          markdown-xwidget--xwidget-buffer)
+      ;; Otherwise create a new session, suppressing any prompts
+      (let ((kill-buffer-query-functions nil))
+        (xwidget-webkit-browse-url uri t)) ; t = new session
+      (let ((xwidget-buffer xwidget-webkit-last-session-buffer))
+        (setq markdown-xwidget--xwidget-buffer xwidget-buffer)
+        (with-current-buffer xwidget-buffer
+          (setq markdown-xwidget--source-buffer source-buffer)
+          (add-hook 'kill-buffer-hook #'markdown-xwidget--kill-buffer-hook nil t)
+          ;; Disable xwidget's kill confirmation for this buffer
+          (setq-local kill-buffer-query-functions
+                      (remq 'xwidget-kill-buffer-query-function
+                            kill-buffer-query-functions))
+          ;; Bind q to close preview properly (handle evil-mode if present)
+          (if (bound-and-true-p evil-mode)
+              (evil-local-set-key 'normal (kbd "q") #'markdown-xwidget-close-preview)
+            (local-set-key (kbd "q") #'markdown-xwidget-close-preview)))
+        xwidget-buffer))))
 
 (defun markdown-xwidget-resource (rel-path)
   "Return the absolute path for REL-PATH.
@@ -226,13 +268,11 @@ xwidget buffer if it still exists."
   (setq markdown-xhtml-header-content
         markdown-xwidget--markdown-xhtml-header-content-original)
   ;; Kill the xwidget buffer if it exists
-  (when (and markdown-xwidget--xwidget-buffer
-             (buffer-live-p markdown-xwidget--xwidget-buffer))
-    ;; Remove the hook first to avoid recursion
-    (with-current-buffer markdown-xwidget--xwidget-buffer
-      (remove-hook 'kill-buffer-hook #'markdown-xwidget--kill-buffer-hook t))
-    (kill-buffer markdown-xwidget--xwidget-buffer))
+  (markdown-xwidget--kill-xwidget-buffer markdown-xwidget--xwidget-buffer)
   (setq markdown-xwidget--xwidget-buffer nil)
+  ;; Clear stale global xwidget session reference
+  (unless (buffer-live-p xwidget-webkit-last-session-buffer)
+    (setq xwidget-webkit-last-session-buffer nil))
   (markdown-live-preview-mode -1))
 
 ;;;###autoload
